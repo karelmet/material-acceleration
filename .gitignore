@@ -14,4 +14,8 @@ __pycache__/
 *.pyc
 
 # notebooks
-.ipynb_checkpoints/
+.ipynb_checkpoints/.DS_Store
+
+# fichiers du mac (pour karel)
+.DS_Store
+*/.DS_Store
