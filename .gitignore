@@ -14,4 +14,4 @@ __pycache__/
 *.pyc
 
 # notebooks
-.ipynb_checkpoints/
+.ipynb_checkpoints/.DS_Store
