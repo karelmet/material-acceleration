@@ -15,3 +15,7 @@ __pycache__/
 
 # notebooks
 .ipynb_checkpoints/.DS_Store
+
+# fichiers du mac (pour karel)
+.DS_Store
+*/.DS_Store
