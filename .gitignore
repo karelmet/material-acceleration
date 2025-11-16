@@ -1,0 +1,17 @@
+# data
+CADOT_Dataset/
+DataCadot_yolo/
+data/
+*/images/
+*/labels/
+reports/
+
+# results
+experiments/
+
+# python garbage
+__pycache__/
+*.pyc
+
+# notebooks
+.ipynb_checkpoints/
