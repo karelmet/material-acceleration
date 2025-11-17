@@ -4,9 +4,8 @@ import random
 import numpy as np
 from pathlib import Path
 
-# -------------------- CONFIG --------------------
-DATA_ROOT = "dataset"
-SPLIT = "train"  # 'train' ou 'valid' (on travaille sur le split choisi)
+
+DATA_ROOT = "DataCadot"
 IMG_DIR = os.path.join(DATA_ROOT, "images", "train")
 LBL_DIR = os.path.join(DATA_ROOT, "labels", "train")
 
@@ -16,12 +15,12 @@ OUT_LBL_DIR = os.path.join(OUT_ROOT, "labels", "train")
 os.makedirs(OUT_IMG_DIR, exist_ok=True)
 os.makedirs(OUT_LBL_DIR, exist_ok=True)
 
-MINORITY_CLASSES = [2]    # classes à augmenter (adapter)
+MINORITY_CLASSES = [0]    # classes à augmenter (adapter)
 AUG_PER_OBJECT = 3        # nb d'augmentations par objet trouvé
 MAX_TRIES_FOR_DST = 50    # essais pour trouver une destination convenable
 RESIZE_IF_TOO_BIG = True  # si le patch > dest image, on le redimensionne
 RANDOM_SEED = 42
-# ------------------------------------------------
+
 
 random.seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
@@ -192,7 +191,5 @@ for src_img_file in image_files:
 
             save_lbl_path = os.path.join(OUT_LBL_DIR, Path(save_name).with_suffix(".txt").name)
             write_labels(save_lbl_path, out_boxes)
-
-            print(f"Saved {save_name} (pasted cls {cls} from {src_img_file} to {dst_file})")
 
 print("Augmentation terminée. Images et labels sauvegardés dans:", OUT_ROOT)
