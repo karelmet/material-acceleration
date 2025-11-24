@@ -5,6 +5,7 @@ import random
 import numpy as np
 from pathlib import Path
 
+# LA COMMANDE POUR RUN CE .py EST : python augmentation.py --mode yolo (ou coco)
 
 # ==========================================
 #   CONFIGURATION
