@@ -51,13 +51,12 @@ def write_labels(label_path, boxes):
             f.write(f"{cls} {x:.6f} {y:.6f} {w:.6f} {h:.6f}\n")
 
 def augment_patch(patch):
-    """Applique aléatoirement une transformation simple"""
-    choice = random.choice(["noise", "rotate", "none"])
+    """Applique aléatoirement une transformation simple ou d'intensité"""
+    choice = random.choice(["noise", "rotate", "intensity"])
     if choice == "noise":
         noise = np.random.normal(0, 12, patch.shape).astype(np.int16)
         out = patch.astype(np.int16) + noise
-        out = np.clip(out, 0, 255).astype(np.uint8)
-        return out
+        return np.clip(out, 0, 255).astype(np.uint8)
     if choice == "rotate":
         angle = random.choice([90, 180, 270])
         if angle == 90:
@@ -65,7 +64,19 @@ def augment_patch(patch):
         if angle == 180:
             return cv2.rotate(patch, cv2.ROTATE_180)
         return cv2.rotate(patch, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    if choice == "intensity":
+        out = patch.astype(np.float32)
+
+        contrast = random.uniform(0.7, 1.3)
+        out = 128 + contrast * (out - 128)
+    
+        gamma = random.uniform(0.7, 1.5)
+        out = 255.0 * ((out / 255.0) ** gamma)
+
+        return np.clip(out, 0, 255).astype(np.uint8)
+    
     return patch
+
 
 # Préparer listes
 image_files = list_image_files(IMG_DIR)
