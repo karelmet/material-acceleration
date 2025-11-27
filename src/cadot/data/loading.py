@@ -1,6 +1,5 @@
 # src/cadot/data/loading.py
 import os
-from pathlib import Path
 from cadot.utils.path import get_data_path
 
 def load_yolo_annotations(label_path, img_width, img_height):
