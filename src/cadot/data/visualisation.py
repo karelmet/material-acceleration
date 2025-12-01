@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import numpy as np
 
 def plot_image_with_annotations(image, annotations, class_names=None, figsize=(8, 8)):
     """
@@ -49,3 +50,31 @@ def plot_image_with_annotations(image, annotations, class_names=None, figsize=(8
         )
     plt.axis('off')
     plt.show()
+
+def yolo_boxes_to_annotations(boxes: np.ndarray, img_width, img_height):
+    """
+    Convertit un tableau (N,5) YOLO normalisé [cls, xc, yc, w, h]
+    en liste de dicts :
+        {"class_id": int, "bbox": [x, y, w, h]} en pixels
+    """
+    annotations = []
+    if boxes.size == 0:
+        return annotations
+
+    for cls, xc, yc, bw, bh in boxes:
+        # remettre en pixels
+        bw_pix = bw * img_width
+        bh_pix = bh * img_height
+        x_center = xc * img_width
+        y_center = yc * img_height
+
+        x = x_center - bw_pix / 2.0
+        y = y_center - bh_pix / 2.0
+
+        ann = {
+            "class_id": int(cls),
+            "bbox": [float(x), float(y), float(bw_pix), float(bh_pix)],
+        }
+        annotations.append(ann)
+
+    return annotations
