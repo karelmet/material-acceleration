@@ -82,6 +82,27 @@ def random_contrast(img, boxes, p=0.5, lower=0.3, upper=2.5)-> tuple[np.ndarray,
 
     return img_out, boxes
 
+def random_gaussian_noise(img, boxes, p=0.5, std_max=40) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Ajoute un bruit gaussien avec probabilité p.
+
+    std : écart-type du bruit (en niveaux de gris, sur l'échelle [0, 255]).
+    """
+    if random.random() > p:
+        return img, boxes
+
+    # randomisation de la variance du bruit pour plus d'aléatoire
+    std = random.uniform(5, std_max) # -> 40 est la valeur max que l'on s'autorise (trop bruité sinon)
+
+    img_f = img.astype(np.float32)
+    noise = np.random.normal(loc=0.0, scale=std, size=img.shape).astype(np.float32)
+
+    img_f = img_f + noise
+    img_f = np.clip(img_f, 0, 255)
+
+    img_out = img_f.astype(np.uint8)
+    return img_out, boxes
+
 def simple_augmentation(img, boxes)-> tuple[np.ndarray, np.ndarray]:
     """
     Augmentation en utilisant les fonctions simples (flip, contraste et luminosité).
@@ -91,6 +112,7 @@ def simple_augmentation(img, boxes)-> tuple[np.ndarray, np.ndarray]:
     img, boxes = random_vertical_flip(img, boxes)
     img, boxes = random_brightness(img, boxes)
     img, boxes = random_contrast(img, boxes)
+    img, boxes = random_gaussian_noise(img, boxes)
 
     return img, boxes
 
