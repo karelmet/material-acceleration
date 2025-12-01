@@ -101,7 +101,9 @@ def train_yolo(data: str,
                name: str | None = None,
                resume: bool = False,
                hyp: dict | None = None,
-               val: bool = True):
+               val: bool = True,
+               classes: Sequence[int] | None = None,
+               ):
     """
     Train a YOLOv8 model using the ultralytics API.
 
@@ -133,7 +135,7 @@ def train_yolo(data: str,
         "resume": resume,
         "hyp": hyp,
         "val": val,
-        "workers": 10, # semble ne pas être pris en compte par la fonction
+        "classes": classes,
         "patience": 20,
     }
     # remove None values so ultralytics uses defaults where applicable
