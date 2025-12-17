@@ -10,6 +10,9 @@ from sklearn.metrics import average_precision_score
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
+import json
 
 
 classes = ['Background', 'Basketball Field', 'Building', 'Crosswalk', 'Football Field',
@@ -17,6 +20,7 @@ classes = ['Background', 'Basketball Field', 'Building', 'Crosswalk', 'Football 
            'Roundabout', 'Ship', 'Small Vehicle', 'Swimming Pool',
            'Tennis Court', 'Train'
            ]
+
 
 
 # WRAPPER COCO POUR MANIPULER IMAGES ET TARGETS
@@ -40,13 +44,33 @@ class CocoWrapper(CocoDetection):
         }
 
         return img, target
+    
+
+def predictions_to_coco(predictions, image_ids):
+    coco_results = []
+
+    for pred, img_id in zip(predictions, image_ids):
+        for box, label, score in zip(pred["boxes"], pred["labels"], pred["scores"]):
+            coco_results.append({
+                "image_id": img_id,
+                "category_id": int(label),
+                "bbox": [
+                    float(box[0]),
+                    float(box[1]),
+                    float(box[2] - box[0]),
+                    float(box[3] - box[1])
+                ],
+                "score": float(score)
+            })
+
+    return coco_results
 
 
 # CHEMINS ET DATALOADERS
 ROOT = Path(__file__).resolve().parents[3]
 save_train = ROOT / "src" / "cadot" / "models"
 
-val_dir = ROOT / "CADOT_Dataset" / "valid"
+val_dir = ROOT / "merged_dataset" / "valid"
 val_json = val_dir / "_annotations.coco.json"
 valid_dataset = CocoWrapper(str(val_dir), str(val_json))
 valid_loader = DataLoader(
@@ -63,7 +87,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = fasterrcnn_resnet50_fpn(weights=None, num_classes=15)
 model.to(device)
 # Charger le .pth
-state_dict = torch.load(save_train / "faster_rcnn.pth", map_location=device)
+state_dict = torch.load(save_train / "faster_rcnn_best.pth", map_location=device)
 model.load_state_dict(state_dict)
 model.eval()
 
@@ -99,7 +123,7 @@ print("✔ Sauvegardé dans :", save_train / "faster_rcnn_predictions.pt")
 
 
 # MATRICE DE CONFUSION
-def compute_confusion_matrix(predictions, targets, iou_threshold=0.5):
+def compute_confusion_matrix(predictions, targets, iou_threshold=0.5, score_threshold=0.05):
     y_true = []
     y_pred = []
 
@@ -107,28 +131,29 @@ def compute_confusion_matrix(predictions, targets, iou_threshold=0.5):
         gt_boxes = tgt["boxes"]
         gt_labels = tgt["labels"].tolist()
 
-        pred_boxes = pred["boxes"]
-        pred_labels = pred["labels"].tolist()
-        pred_scores = pred["scores"].tolist()
+        # filtrer les predictions faibles
+        mask = pred["scores"] >= score_threshold
+        pred_boxes = pred["boxes"][mask]
+        pred_labels = pred["labels"][mask]
 
         matched_gt = set()
 
-        for pb, pl, _ in zip(pred_boxes, pred_labels, pred_scores):
-            object = torchvision.ops.box_iou(pb.unsqueeze(0), gt_boxes).squeeze(0)
-            max_iou, max_idx = torch.max(object, dim=0)
+        # Matching préd -> GT (one-to-one)
+        for pb, pl in zip(pred_boxes, pred_labels):
+            ious = torchvision.ops.box_iou(pb.unsqueeze(0), gt_boxes).squeeze(0)
+            max_iou, max_idx = torch.max(ious, dim=0)
 
             if max_iou >= iou_threshold and max_idx.item() not in matched_gt:
-                y_true.append(gt_labels[max_idx.item()])
-                y_pred.append(pl)
+                # vraie prédiction
+                y_true.append(gt_labels[max_idx])
+                y_pred.append(pl.item())
                 matched_gt.add(max_idx.item())
-            else:
-                y_true.append(0)  # Background
-                y_pred.append(pl)
 
+        # Tous les GT non matchés = FN (prédit background)
         for i, gl in enumerate(gt_labels):
             if i not in matched_gt:
                 y_true.append(gl)
-                y_pred.append(0)  # Background
+                y_pred.append(0)   # background
 
     cm = confusion_matrix(y_true, y_pred, labels=list(range(len(classes))))
     return cm
@@ -148,7 +173,7 @@ def plot_confusion_matrix(cm, classes):
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
              rotation_mode="anchor")
 
-    thresh = cm.max() / 2.      # Threshold for text color
+    thresh = cm.max() / 2.
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
             ax.text(j, i, format(cm[i, j], 'd'),
@@ -157,6 +182,44 @@ def plot_confusion_matrix(cm, classes):
             
     fig.tight_layout()
     plt.savefig(save_train / "faster_rcnn_confusion_matrix.png")
+
+
+def compute_precision_from_cm(cm, background_idx=0):
+    num_classes = cm.shape[0]
+
+    TP = 0
+    FP = 0
+
+    for c in range(num_classes):
+        if c == background_idx:
+            continue
+
+        tp_c = cm[c, c]
+        fp_c = cm[:, c].sum() - tp_c
+
+        TP += tp_c
+        FP += fp_c
+
+    precision_micro = TP / (TP + FP + 1e-8)
+    return precision_micro
+
+def precision_per_class(cm, classes, background_idx=0):
+    precisions = {}
+
+    for c, name in enumerate(classes):
+        if c == background_idx:
+            continue
+
+        tp = cm[c, c]
+        fp = cm[:, c].sum() - tp
+
+        if tp + fp > 0:
+            precisions[name] = tp / (tp + fp)
+        else:
+            precisions[name] = 0.0
+
+    return precisions
+
 
 
 cm = compute_confusion_matrix(
@@ -170,97 +233,53 @@ plot_confusion_matrix(
     classes
 )
 
+precision = compute_precision_from_cm(cm)
+print(f"Precision (micro, sans background) : {precision:.4f}")
+
+precisions = precision_per_class(cm, classes)
+
+for cls, p in precisions.items():
+    print(f"{cls:20s} : {p:.3f}")
+
+
 
 # PRÉCISION-RAPPEL ET AP PAR CLASSE
-def prepare_pr_data(predictions, targets, classes, iou_threshold=0.5):
-    """Prépare les données pour les courbes précision-rappel et le calcul de l'AP par classe.
-        iou_threshold: Seuil IoU pour considérer une prédiction comme un vrai positif.
-        Returns:
-        all_targets (list of list): Liste des cibles binaires par classe.
-        all_scores (list of list): Liste des scores de confiance par classe."""
-    num_classes = len(classes)
+# Charger annotations GT
+coco_gt = COCO(str(val_json))
 
-    # Une liste par classe
-    all_targets = [[] for _ in range(num_classes)]
-    all_scores  = [[] for _ in range(num_classes)]
+# Patch si le champ "info" est absent (bug classique pycocotools)
+if "info" not in coco_gt.dataset:
+    coco_gt.dataset["info"] = {
+        "description": "custom dataset",
+        "version": "1.0",
+        "year": 2025
+    }
 
-    for pred, tgt in zip(predictions, targets):
+# image_ids dans le même ordre que valid_loader
+image_ids = valid_dataset.ids
 
-        gt_boxes = tgt["boxes"]
-        gt_labels = tgt["labels"]
-        pred_boxes = pred["boxes"]
-        pred_labels = pred["labels"]
-        pred_scores = pred["scores"]
+# Convertir prédictions
+coco_preds = predictions_to_coco(predictions, image_ids)
 
-        # IoU matrix une seule fois
-        ious = torchvision.ops.box_iou(pred_boxes, gt_boxes)
+# Charger résultats
+coco_dt = coco_gt.loadRes(coco_preds)
 
-        # Parcours direct des prédictions
-        for p_idx in range(len(pred_boxes)):
-            cls = pred_labels[p_idx].item()
-            score = pred_scores[p_idx].item()
+# Évaluation COCO
+coco_eval = COCOeval(coco_gt, coco_dt, iouType='bbox')
+coco_eval.evaluate()
+coco_eval.accumulate()
+coco_eval.summarize()
 
-            # Associer score
-            all_scores[cls].append(score)
+print("\n📊 AP par classe :")
 
-            # Trouver le GT le plus proche
-            best_iou, best_gt_idx = torch.max(ious[p_idx], dim=0)
+for idx, cls_name in enumerate(classes):
+    if idx == 0:
+        continue  # background
 
-            # Vrai positif : bonne classe + iou suffisant
-            if best_iou >= iou_threshold and gt_labels[best_gt_idx] == cls:
-                all_targets[cls].append(1)
-            else:
-                all_targets[cls].append(0)
+    coco_eval.params.catIds = [idx]
+    coco_eval.evaluate()
+    coco_eval.accumulate()
+    ap = coco_eval.stats[0]  # AP@[.5:.95]
 
-    return all_targets, all_scores
-
-
-
-# TRACER LES COURBES PRÉCISION-RAPPEL
-def plot_precision_recall(all_targets, all_scores, class_names):
-    plt.figure(figsize=(10, 8))
-
-    for cls_idx, cls_name in enumerate(class_names):
-        y_true = np.array(all_targets[cls_idx])
-        y_scores = np.array(all_scores[cls_idx])
-
-        if len(np.unique(y_true)) < 2:
-            continue
-
-        precision, recall, _ = precision_recall_curve(y_true, y_scores)
-
-        plt.plot(recall, precision, label=cls_name)
-
-    plt.xlabel("Recall")
-    plt.ylabel("Precision")
-    plt.title("Precision-Recall Curves per Class")
-    plt.grid(alpha=0.3)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.tight_layout()
-
-    plt.savefig(save_train / "faster_rcnn_precision_recall.png")
-
-
-
-all_targets, all_scores = prepare_pr_data(predictions, targets, classes, iou_threshold=0.5)
-
-plot_precision_recall(all_targets, all_scores, classes)
-
-# CALCULER L'AVERAGE PRECISION (AP) PAR CLASSE
-for cls_idx in range(len(classes)):
-    y_true = np.array(all_targets[cls_idx])
-    y_scores = np.array(all_scores[cls_idx])
-
-    # Skip classe sans positifs
-    if y_true.sum() == 0:
-        print(f"Class {classes[cls_idx]} - AP: 0.0000 (aucun vrai positif)")
-        continue
-
-    # Skip classe sans scores
-    if len(y_scores) == 0:
-        print(f"Class {classes[cls_idx]} - AP: 0.0000 (aucun score)")
-        continue
-
-    ap = average_precision_score(y_true, y_scores)
-    print(f"Class {classes[cls_idx]} - AP: {ap:.4f}")
+    print(f"{cls_name:15s} : AP = {ap:.3f}")
 

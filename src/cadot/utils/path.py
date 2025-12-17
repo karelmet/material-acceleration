@@ -18,7 +18,7 @@ def get_project_root():
     return get_src_path().parent
 
 
-def get_data_path(data_dir_name="DataCadot_yolo"):
+def get_data_path(data_dir_name):
     """
     Return the path to the dataset folder, e.g. project/DataCadot_yolo.
     You can change the folder name if needed.
