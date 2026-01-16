@@ -1,6 +1,5 @@
 # src/cadot/data/loading.py
 import os
-from pathlib import Path
 from cadot.utils.path import get_data_path
 import json
 import torch
