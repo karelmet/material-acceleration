@@ -152,3 +152,5 @@ class CocoWrapper(CocoDetection):
 
         target = {"boxes": boxes, "labels": labels}
         return img, target
+    
+    

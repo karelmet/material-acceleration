@@ -7,6 +7,7 @@ import json
 import torch
 import torchvision
 
+from src.cadot.data.loading import CocoWrapper
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.datasets import CocoDetection
@@ -103,7 +104,6 @@ class CocoWrapper(CocoDetection):
         target["labels"] = labels
 
         return img, target
-
 
 # DÉFINITION DU MODÈLE
 

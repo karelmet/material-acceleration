@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import json
 import time
 from pathlib import Path
+
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import precision_recall_curve, average_precision_score
 from torchvision.datasets import CocoDetection
@@ -12,6 +13,7 @@ from torchvision.transforms import functional
 from torch.utils.data import DataLoader
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+from torchvision.models.detection.rpn import AnchorGenerator
 
 
 classes = ['Background', 'Basketball Field', 'Building', 'Crosswalk', 'Football Field',
@@ -24,34 +26,41 @@ SCORE_THRESH_CM = 0.3   # Seuil de confiance pour la matrice de confusion
 SCORE_THRESH_PR = 0.05  # Seuil minimal pour les courbes Precision-Recall
 IOU_THRESH = 0.5        # Seuil d'IoU pour considérer une détection comme valide (0.5 est un recouvrement cible/prédiction moitié)
 
-# CONFIGURATION DES CHEMINS
-ROOT = Path(__file__).resolve().parents[3]
-save_dir = ROOT / "src" / "cadot" / "models"
-save_dir.mkdir(exist_ok=True, parents=True)
-
+# GESTION DES DONNÉES (DATASET)
 
 class CocoWrapper(CocoDetection):
-    # Charge les images et les annotations, puis convertit le tout en tenseurs PyTorch.
-    #Récupéré de Faster_R-CNN.py
+    """
+    Wrapper autour de torchvision.datasets.CocoDetection.
+    Le format natif de COCO retourne les bounding boxes en (x, y, w, h).
+    Or, Faster R-CNN dans PyTorch attend impérativement le format (x1, y1, x2, y2).
+    Cette classe effectue la conversion à la volée lors du chargement des données.
+    """
     def __getitem__(self, idx):
         img, targets = super().__getitem__(idx)
-        img = functional.to_tensor(img)
-
+        img = functional.to_tensor(img) # Conversion PIL -> Tensor (0-1)
+        
         boxes = []
         labels = []
+        
+        # Extraction des annotations
         for t in targets:
-            boxes.append(t["bbox"])
+            boxes.append(t["bbox"])       # Format COCO original : (xmin, ymin, width, height)
             labels.append(t["category_id"])
 
         boxes = torch.tensor(boxes, dtype=torch.float32)
         labels = torch.tensor(labels, dtype=torch.int64)
 
-        target = {
-            "boxes": torchvision.ops.box_convert(boxes, "xywh", "xyxy"),
-            "labels": labels
-        }
+        target = {}
+        # Conversion critique : (x, y, w, h) -> (x1, y1, x2, y2)
+        target["boxes"] = torchvision.ops.box_convert(boxes, "xywh", "xyxy")
+        target["labels"] = labels
 
         return img, target
+
+# CONFIGURATION DES CHEMINS
+ROOT = Path(__file__).resolve().parents[3]
+save_dir = ROOT / "src" / "cadot" / "models"
+save_dir.mkdir(exist_ok=True, parents=True)
 
 # Redéfinition des chemins valid, train
 val_dir = ROOT / "merged_dataset" / "valid"
@@ -64,8 +73,22 @@ loader = DataLoader(dataset, batch_size=1, shuffle=False,
 # Calcul sur GPU (ou CPU sinon)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Recharger le modèle en mémoire
-model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights=None, num_classes=15)
+# 1. On redéfinit les ancres comme à l'entraînement
+anchor_generator = AnchorGenerator(
+    sizes=((16,), (32,), (64,), (128,), (256,)),
+    aspect_ratios=((0.5, 1.0, 2.0),) * 5
+)
+
+# Instancier modèle en lui passant ces ancres
+model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
+    weights=None, 
+    num_classes=15,
+    rpn_anchor_generator=anchor_generator,
+    min_size=512,
+    max_size=1024
+)
+
+# Charger les poids
 state_dict = torch.load(save_dir / "faster_rcnn_best.pth", map_location=device, weights_only=True)
 model.load_state_dict(state_dict)
 model.to(device)
