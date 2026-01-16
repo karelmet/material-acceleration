@@ -1,1 +1,3 @@
-# material-acceleration
+# Projet accélération matérielle
+
+L'objectif de ce projet est d'implémenter un pipeline de détection d'objet sur images satellites issues d'une base de données appelée *CADOT*. Celle-ci présente une diversité d'images avec des *bounding box* associées à plusieurs éléments de classes d'objets définis en amont, mais leur nombre est fortement déséquilibré. Afin d'utiliser les 2 modèles de détecteurs choisis que sont Faster R-CNN et YOLOv8, il faut d'abord procéder à une augmentation sélective de données. Ensuite, les modèles entraînés peuvent être évalués et analysés pour comparer leur performances.
