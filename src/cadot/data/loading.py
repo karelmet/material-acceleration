@@ -3,6 +3,11 @@ import os
 from pathlib import Path
 from cadot.utils.path import get_data_path
 import json
+import torch
+import torchvision
+
+from torchvision.datasets import CocoDetection
+from torchvision.transforms import functional as F
 
 def load_yolo_annotations(label_path, img_width, img_height):
     """Load YOLO format annotations from txt file."""
@@ -124,3 +129,26 @@ def get_image_label_pairs_coco(data_dir_name):
             pairs.append((img_path, name_to_id[img_name]))
 
     return pairs, coco
+
+
+class CocoWrapper(CocoDetection):
+    def __getitem__(self, idx):
+        img, targets = super().__getitem__(idx)
+        img = F.to_tensor(img)
+
+        boxes = []
+        labels = []
+        for t in targets:
+            boxes.append(t["bbox"])
+            labels.append(t["category_id"])
+
+        if len(boxes) > 0:
+            boxes = torch.tensor(boxes, dtype=torch.float32)
+            boxes = torchvision.ops.box_convert(boxes, "xywh", "xyxy")
+            labels = torch.tensor(labels, dtype=torch.int64)
+        else:
+            boxes = torch.zeros((0, 4))
+            labels = torch.zeros((0,), dtype=torch.int64)
+
+        target = {"boxes": boxes, "labels": labels}
+        return img, target

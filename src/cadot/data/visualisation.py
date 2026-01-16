@@ -49,3 +49,65 @@ def plot_image_with_annotations(image, annotations, class_names=None, figsize=(8
         )
     plt.axis('off')
     plt.show()
+
+
+def plot_predictions(img, pred, score_threshold, classes, save_path=None):
+    """
+    Affiche ou sauvegarde les prédictions.
+    Gère le décalage d'indice (label - 1).
+    """
+    # Conversion Tensor -> Numpy (C, H, W) -> (H, W, C)
+    img_np = img.permute(1, 2, 0).cpu().numpy()
+
+    fig, ax = plt.subplots(1, figsize=(10, 10))
+    ax.imshow(img_np)
+
+    boxes = pred["boxes"]
+    labels = pred["labels"]
+    scores = pred["scores"]
+
+    for box, label, score in zip(boxes, labels, scores):
+        if score < score_threshold:
+            continue
+
+        x1, y1, x2, y2 = box.tolist()
+        w = x2 - x1
+        h = y2 - y1
+
+        rect = patches.Rectangle(
+            (x1, y1), w, h,
+            linewidth=2,
+            edgecolor='red',
+            facecolor='none'
+        )
+        ax.add_patch(rect)
+
+        # --- GESTION DES INDICES ---
+        label_idx = int(label.item())
+        
+        # On décale de -1 car le modèle sort [1..N] et ta liste est [0..N-1]
+        # (Hypothèse: ta liste 'classes' ne contient QUE les objets, sans 'Background')
+        corrected_idx = label_idx - 1 
+
+        if 0 <= corrected_idx < len(classes):
+            class_name = classes[corrected_idx]
+        else:
+            class_name = f"Unknown ({label_idx})"
+
+        ax.text(
+            x1, y1 - 5,
+            f"{class_name} ({score:.2f})",
+            color='red',
+            fontsize=10,
+            backgroundcolor='white'
+        )
+
+    ax.axis("off")
+    plt.tight_layout()
+
+    # --- CHOIX : SAUVEGARDER OU AFFICHER ---
+    if save_path:
+        plt.savefig(save_path, dpi=200)
+        plt.close() # Libère la mémoire
+    else:
+        plt.show()  # Affiche dans le notebook
